@@ -8,7 +8,7 @@ base = imp.load_source("base", os.path.join(os.path.dirname(__file__), "base.py"
 def compressibility():
     config = base.get_config()
 
-    config.pretrained.model = "CompVis/stable-diffusion-v1-4"
+    # config.pretrained.model = "CompVis/stable-diffusion-v1-4"
 
     config.num_epochs = 100
     config.use_lora = True
@@ -19,9 +19,9 @@ def compressibility():
     config.sample.batch_size = 8
     config.sample.num_batches_per_epoch = 4
 
-    # this corresponds to (8 * 4) / (4 * 2) = 4 gradient updates per epoch.
-    config.train.batch_size = 4
-    config.train.gradient_accumulation_steps = 2
+    # this corresponds to (8 * 4) / (1 * 8) = 4 gradient updates per epoch.
+    config.train.batch_size = 1
+    config.train.gradient_accumulation_steps = 8
 
     # prompting
     config.prompt_fn = "imagenet_animals"
@@ -50,7 +50,7 @@ def aesthetic():
     config.reward_fn = "aesthetic_score"
 
     # this reward is a bit harder to optimize, so I used 2 gradient updates per epoch.
-    config.train.gradient_accumulation_steps = 4
+    config.train.gradient_accumulation_steps = 16
 
     config.prompt_fn = "simple_animals"
     config.per_prompt_stat_tracking = {

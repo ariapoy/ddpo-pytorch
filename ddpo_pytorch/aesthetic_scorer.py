@@ -9,6 +9,7 @@ from PIL import Image
 
 ASSETS_PATH = resources.files("ddpo_pytorch.assets")
 
+prefix_path = '/tmp2/lupoy/L4HF/model_assets'
 
 class MLP(nn.Module):
     def __init__(self):
@@ -32,11 +33,11 @@ class MLP(nn.Module):
 class AestheticScorer(torch.nn.Module):
     def __init__(self, dtype):
         super().__init__()
-        self.clip = CLIPModel.from_pretrained("openai/clip-vit-large-patch14")
-        self.processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
+        self.clip = CLIPModel.from_pretrained(f"{prefix_path}/openai/clip-vit-large-patch14")
+        self.processor = CLIPProcessor.from_pretrained(f"{prefix_path}/openai/clip-vit-large-patch14")
         self.mlp = MLP()
         state_dict = torch.load(
-            ASSETS_PATH.joinpath("sac+logos+ava1-l14-linearMSE.pth")
+            ASSETS_PATH.joinpath(f"{prefix_path}/sac+logos+ava1-l14-linearMSE.pth")
         )
         self.mlp.load_state_dict(state_dict)
         self.dtype = dtype

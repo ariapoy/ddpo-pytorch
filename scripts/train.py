@@ -16,10 +16,9 @@ import numpy as np
 import ddpo_pytorch.prompts
 import ddpo_pytorch.rewards
 from ddpo_pytorch.stat_tracking import PerPromptStatTracker
-from ddpo_pytorch.diffusers_patch.pipeline_with_logprob import pipeline_with_logprob
+from ddpo_pytorch.diffusers_patch.pipeline_with_logprob import pipeline_with_logprob, pipeline_with_logprob_with_noisyimg
 from ddpo_pytorch.diffusers_patch.ddim_with_logprob import ddim_step_with_logprob
 import torch
-import wandb
 from functools import partial
 import tqdm
 import tempfile
@@ -33,6 +32,18 @@ config_flags.DEFINE_config_file("config", "config/base.py", "Training configurat
 
 logger = get_logger(__name__)
 
+is_debugging = False
+is_reward = False
+if is_reward:
+    print('get rewards of noisy images')
+    is_debugging = True
+if is_debugging:
+    print('Debug mode')
+    print('no logs to wandb')
+else:
+    import wandb
+
+project_name = 'ddpo-pytorch'
 
 def main(_):
     # basic Accelerate and logging setup
@@ -67,22 +78,39 @@ def main(_):
         total_limit=config.num_checkpoint_limit,
     )
 
-    accelerator = Accelerator(
-        log_with="wandb",
-        mixed_precision=config.mixed_precision,
-        project_config=accelerator_config,
-        # we always accumulate gradients across timesteps; we want config.train.gradient_accumulation_steps to be the
-        # number of *samples* we accumulate across, so we need to multiply by the number of training timesteps to get
-        # the total number of optimizer steps to accumulate across.
-        gradient_accumulation_steps=config.train.gradient_accumulation_steps
-        * num_train_timesteps,
-    )
-    if accelerator.is_main_process:
-        accelerator.init_trackers(
-            project_name="ddpo-pytorch",
-            config=config.to_dict(),
-            init_kwargs={"wandb": {"name": config.run_name}},
+    if is_debugging:
+        accelerator = Accelerator(
+            log_with="tensorboard",
+            mixed_precision=config.mixed_precision,
+            project_config=accelerator_config,
+            # we always accumulate gradients across timesteps; we want config.train.gradient_accumulation_steps to be the
+            # number of *samples* we accumulate across, so we need to multiply by the number of training timesteps to get
+            # the total number of optimizer steps to accumulate across.
+            gradient_accumulation_steps=config.train.gradient_accumulation_steps
+            * num_train_timesteps,
         )
+        # if accelerator.is_main_process:
+        #     accelerator.init_trackers(
+        #         project_name="ddpo-pytorch",
+        #         config=config.to_dict(),
+        #     )
+    else:
+        accelerator = Accelerator(
+            log_with="wandb",
+            mixed_precision=config.mixed_precision,
+            project_config=accelerator_config,
+            # we always accumulate gradients across timesteps; we want config.train.gradient_accumulation_steps to be the
+            # number of *samples* we accumulate across, so we need to multiply by the number of training timesteps to get
+            # the total number of optimizer steps to accumulate across.
+            gradient_accumulation_steps=config.train.gradient_accumulation_steps
+            * num_train_timesteps,
+        )
+        if accelerator.is_main_process:
+            accelerator.init_trackers(
+                project_name=project_name,
+                config=config.to_dict(),
+                init_kwargs={"wandb": {"name": config.run_name}},
+            )
     logger.info(f"\n{config}")
 
     # set seed (device_specific is very important to get different prompts on different devices)
@@ -333,15 +361,26 @@ def main(_):
 
             # sample
             with autocast():
-                images, _, latents, log_probs = pipeline_with_logprob(
-                    pipeline,
-                    prompt_embeds=prompt_embeds,
-                    negative_prompt_embeds=sample_neg_prompt_embeds,
-                    num_inference_steps=config.sample.num_steps,
-                    guidance_scale=config.sample.guidance_scale,
-                    eta=config.sample.eta,
-                    output_type="pt",
-                )
+                if is_reward:
+                    images, _, latents, log_probs, noisy_images = pipeline_with_logprob_with_noisyimg(
+                        pipeline,
+                        prompt_embeds=prompt_embeds,
+                        negative_prompt_embeds=sample_neg_prompt_embeds,
+                        num_inference_steps=config.sample.num_steps,
+                        guidance_scale=config.sample.guidance_scale,
+                        eta=config.sample.eta,
+                        output_type="pt",
+                    )
+                else:
+                    images, _, latents, log_probs = pipeline_with_logprob(
+                        pipeline,
+                        prompt_embeds=prompt_embeds,
+                        negative_prompt_embeds=sample_neg_prompt_embeds,
+                        num_inference_steps=config.sample.num_steps,
+                        guidance_scale=config.sample.guidance_scale,
+                        eta=config.sample.eta,
+                        output_type="pt",
+                    )
 
             latents = torch.stack(
                 latents, dim=1
@@ -353,24 +392,48 @@ def main(_):
 
             # compute rewards asynchronously
             rewards = executor.submit(reward_fn, images, prompts, prompt_metadata)
+            if is_reward:
+                # rewards of noisy images, dim = (timesteps * rewards.size())
+                noisy_rewards = []
+                for noisy_img in noisy_images:
+                    noisy_rewards.append(executor.submit(reward_fn, noisy_img, prompts, prompt_metadata))
+
             # yield to to make sure reward computation starts
             time.sleep(0)
 
-            samples.append(
-                {
-                    "prompt_ids": prompt_ids,
-                    "prompt_embeds": prompt_embeds,
-                    "timesteps": timesteps,
-                    "latents": latents[
-                        :, :-1
-                    ],  # each entry is the latent before timestep t
-                    "next_latents": latents[
-                        :, 1:
-                    ],  # each entry is the latent after timestep t
-                    "log_probs": log_probs,
-                    "rewards": rewards,
-                }
-            )
+            if is_reward:
+                samples.append(
+                    {
+                        "prompt_ids": prompt_ids,
+                        "prompt_embeds": prompt_embeds,
+                        "timesteps": timesteps,
+                        "latents": latents[
+                            :, :-1
+                        ],  # each entry is the latent before timestep t
+                        "next_latents": latents[
+                            :, 1:
+                        ],  # each entry is the latent after timestep t
+                        "log_probs": log_probs,
+                        "rewards": rewards,
+                        "noisy_rewards": noisy_rewards,
+                    }
+                )
+            else:
+                samples.append(
+                    {
+                        "prompt_ids": prompt_ids,
+                        "prompt_embeds": prompt_embeds,
+                        "timesteps": timesteps,
+                        "latents": latents[
+                            :, :-1
+                        ],  # each entry is the latent before timestep t
+                        "next_latents": latents[
+                            :, 1:
+                        ],  # each entry is the latent after timestep t
+                        "log_probs": log_probs,
+                        "rewards": rewards,
+                    }
+                )
 
         # wait for all rewards to be computed
         for sample in tqdm(
@@ -382,32 +445,45 @@ def main(_):
             rewards, reward_metadata = sample["rewards"].result()
             # accelerator.print(reward_metadata)
             sample["rewards"] = torch.as_tensor(rewards, device=accelerator.device)
+            if is_reward:
+                noisy_rewards = []
+                for nr in sample['noisy_rewards']:
+                    r, _ = nr.result()
+                    noisy_rewards.append(r)
+                sample['noisy_rewards'] = torch.as_tensor(noisy_rewards, device='cpu')
 
         # collate samples into dict where each entry has shape (num_batches_per_epoch * sample.batch_size, ...)
-        samples = {k: torch.cat([s[k] for s in samples]) for k in samples[0].keys()}
+        if is_reward:
+            noisy_rewards = [s['noisy_rewards'] for s in samples]
+            samples = {k: torch.cat([s[k] for s in samples]) for k in samples[0].keys() if k != 'noisy_rewards'}
+        else:
+            samples = {k: torch.cat([s[k] for s in samples]) for k in samples[0].keys()}
 
         # this is a hack to force wandb to log the images as JPEGs instead of PNGs
-        with tempfile.TemporaryDirectory() as tmpdir:
-            for i, image in enumerate(images):
-                pil = Image.fromarray(
-                    (image.cpu().numpy().transpose(1, 2, 0) * 255).astype(np.uint8)
+        if is_debugging:
+            pass
+        else:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                for i, image in enumerate(images):
+                    pil = Image.fromarray(
+                        (image.cpu().numpy().transpose(1, 2, 0) * 255).astype(np.uint8)
+                    )
+                    pil = pil.resize((256, 256))
+                    pil.save(os.path.join(tmpdir, f"{i}.jpg"))
+                accelerator.log(
+                    {
+                        "images": [
+                            wandb.Image(
+                                os.path.join(tmpdir, f"{i}.jpg"),
+                                caption=f"{prompt:.25} | {reward:.2f}",
+                            )
+                            for i, (prompt, reward) in enumerate(
+                                zip(prompts, rewards)
+                            )  # only log rewards from process 0
+                        ],
+                    },
+                    step=global_step,
                 )
-                pil = pil.resize((256, 256))
-                pil.save(os.path.join(tmpdir, f"{i}.jpg"))
-            accelerator.log(
-                {
-                    "images": [
-                        wandb.Image(
-                            os.path.join(tmpdir, f"{i}.jpg"),
-                            caption=f"{prompt:.25} | {reward:.2f}",
-                        )
-                        for i, (prompt, reward) in enumerate(
-                            zip(prompts, rewards)
-                        )  # only log rewards from process 0
-                    ],
-                },
-                step=global_step,
-            )
 
         # gather rewards across processes
         rewards = accelerator.gather(samples["rewards"]).cpu().numpy()

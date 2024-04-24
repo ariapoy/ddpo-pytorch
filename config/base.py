@@ -6,16 +6,14 @@ def get_config():
 
     ###### General ######
     # run name for wandb logging and checkpoint saving -- if not provided, will be auto-generated based on the datetime.
-    config.run_name = ""
+    config.run_name = "official-real" # "official-real"
     # random seed for reproducibility.
-    config.seed = 42
-    # top-level logging directory for checkpoint saving.
-    config.logdir = "logs"
+    config.seed = 1126 # 42
     # number of epochs to train for. each epoch is one round of sampling from the model followed by training on those
     # samples.
-    config.num_epochs = 100
+    config.num_epochs = 5 # 100
     # number of epochs between saving model checkpoints.
-    config.save_freq = 20
+    config.save_freq = 1 # 20
     # number of checkpoints to keep before overwriting old ones.
     config.num_checkpoint_limit = 5
     # mixed precision training. options are "fp16", "bf16", and "no". half-precision speeds up training significantly.
@@ -35,7 +33,9 @@ def get_config():
     ###### Pretrained Model ######
     config.pretrained = pretrained = ml_collections.ConfigDict()
     # base model to load. either a path to a local directory, or a model name from the HuggingFace model hub.
-    pretrained.model = "runwayml/stable-diffusion-v1-5"
+    # pretrained.model = "runwayml/stable-diffusion-v1-5"
+    prefix_path = '/tmp2/lupoy/L4HF/model_assets'
+    pretrained.model = f"{prefix_path}/runwayml/stable-diffusion-v1-5"
     # revision of the model to load.
     pretrained.revision = "main"
 
@@ -43,6 +43,8 @@ def get_config():
     config.sample = sample = ml_collections.ConfigDict()
     # number of sampler inference steps.
     sample.num_steps = 50
+    # sample.num_steps = 10
+
     # eta parameter for the DDIM sampler. this controls the amount of noise injected into the sampling process, with 0.0
     # being fully deterministic and 1.0 being equivalent to the DDPM sampler.
     sample.eta = 1.0
@@ -87,7 +89,11 @@ def get_config():
     train.clip_range = 1e-4
     # the fraction of timesteps to train on. if set to less than 1.0, the model will be trained on a subset of the
     # timesteps for each sample. this will speed up training but reduce the accuracy of policy gradient estimates.
-    train.timestep_fraction = 1.0
+    # train.timestep_fraction = 1.0
+    train.timestep_fraction = 0.1
+
+    # top-level logging directory for checkpoint saving.
+    config.logdir = f"{config.run_name}-timesteps_{sample.num_steps}-trnTimestepsFrac_{train.timestep_fraction}"
 
     ###### Prompt Function ######
     # prompt function to use. see `prompts.py` for available prompt functions.
