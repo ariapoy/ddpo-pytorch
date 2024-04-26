@@ -57,8 +57,18 @@ def aesthetic():
         "buffer_size": 32,
         "min_count": 16,
     }
+
+    config.train.timestep_fraction = 0.1
     return config
 
+def aesthetic_test():
+    config = aesthetic()
+    config.num_epochs = 3
+    config.sample.batch_size = 4
+    config.sample.num_batches_per_epoch = 2
+    config.train.gradient_accumulation_steps = 8
+    config.train.timestep_fraction = 0.1
+    return config
 
 def prompt_image_alignment():
     config = compressibility()

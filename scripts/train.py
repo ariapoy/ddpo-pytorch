@@ -32,6 +32,9 @@ config_flags.DEFINE_config_file("config", "config/base.py", "Training configurat
 
 logger = get_logger(__name__)
 
+# shuffle along time dimension independently for each sample
+is_trnTSFracCorrect = True # [True, False (official default)]
+is_shuffle_timeDim = True # [True (official default), False]
 is_debugging = False
 is_reward = False
 if is_reward:
@@ -48,6 +51,11 @@ project_name = 'ddpo-pytorch'
 def main(_):
     # basic Accelerate and logging setup
     config = FLAGS.config
+
+    if is_shuffle_timeDim is not True:
+        config.logdir = config.logdir + '-noShuffleTimeDim'
+    if is_trnTSFracCorrect:
+        config.logdir = config.logdir + '-trnTSFracCorrect'
 
     unique_id = datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S")
     if not config.run_name:
@@ -533,13 +541,25 @@ def main(_):
             perm = torch.randperm(total_batch_size, device=accelerator.device)
             samples = {k: v[perm] for k, v in samples.items()}
 
-            # shuffle along time dimension independently for each sample
-            perms = torch.stack(
-                [
-                    torch.randperm(num_timesteps, device=accelerator.device)
-                    for _ in range(total_batch_size)
-                ]
-            )
+            traj_idx = torch.arange(0, num_timesteps, device=accelerator.device)
+            if is_trnTSFracCorrect:
+                traj_idx = traj_idx[-num_train_timesteps:]
+            if is_shuffle_timeDim:
+                # shuffle along time dimension independently for each sample
+                perms = torch.stack(
+                    [
+                        traj_idx.index_select(0, torch.randperm(traj_idx.size(0), device=accelerator.device)) for _ in range(total_batch_size)
+                    ]
+                )
+                # print('shuffle along the time dim')
+            else:
+                perms = torch.stack(
+                    [
+                        traj_idx for _ in range(total_batch_size)
+                    ]
+                )
+                # print('no shuffle along the time dim')
+
             for key in ["timesteps", "latents", "next_latents", "log_probs"]:
                 samples[key] = samples[key][
                     torch.arange(total_batch_size, device=accelerator.device)[:, None],
@@ -574,8 +594,9 @@ def main(_):
                 else:
                     embeds = sample["prompt_embeds"]
 
+                idx_train_timesteps = range(num_train_timesteps)
                 for j in tqdm(
-                    range(num_train_timesteps),
+                    idx_train_timesteps,
                     desc="Timestep",
                     position=1,
                     leave=False,

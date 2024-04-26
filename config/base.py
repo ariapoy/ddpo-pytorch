@@ -89,8 +89,7 @@ def get_config():
     train.clip_range = 1e-4
     # the fraction of timesteps to train on. if set to less than 1.0, the model will be trained on a subset of the
     # timesteps for each sample. this will speed up training but reduce the accuracy of policy gradient estimates.
-    # train.timestep_fraction = 1.0
-    train.timestep_fraction = 0.1
+    train.timestep_fraction = 1.0
 
     # top-level logging directory for checkpoint saving.
     config.logdir = f"{config.run_name}-timesteps_{sample.num_steps}-trnTimestepsFrac_{train.timestep_fraction}"
