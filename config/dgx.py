@@ -58,7 +58,7 @@ def aesthetic():
         "min_count": 16,
     }
 
-    config.train.timestep_fraction = 0.1
+    # config.train.timestep_fraction = 1
     return config
 
 def aesthetic_test():

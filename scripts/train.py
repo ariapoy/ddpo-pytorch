@@ -33,7 +33,7 @@ config_flags.DEFINE_config_file("config", "config/base.py", "Training configurat
 logger = get_logger(__name__)
 
 # shuffle along time dimension independently for each sample
-is_trnTSFracCorrect = True # [True, False (official default)]
+is_trnTSFracCorrect = False # [True, False (official default)]
 is_shuffle_timeDim = True # [True (official default), False]
 is_debugging = False
 is_reward = False
