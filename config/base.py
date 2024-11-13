@@ -34,7 +34,7 @@ def get_config():
     config.pretrained = pretrained = ml_collections.ConfigDict()
     # base model to load. either a path to a local directory, or a model name from the HuggingFace model hub.
     # pretrained.model = "runwayml/stable-diffusion-v1-5"
-    prefix_path = '/tmp2/lupoy/L4HF/model_assets'
+    prefix_path = '/tmp2/model_assets'
     pretrained.model = f"{prefix_path}/runwayml/stable-diffusion-v1-5"
     # revision of the model to load.
     pretrained.revision = "main"
@@ -42,8 +42,7 @@ def get_config():
     ###### Sampling ######
     config.sample = sample = ml_collections.ConfigDict()
     # number of sampler inference steps.
-    sample.num_steps = 50
-    # sample.num_steps = 10
+    sample.num_steps = 10
 
     # eta parameter for the DDIM sampler. this controls the amount of noise injected into the sampling process, with 0.0
     # being fully deterministic and 1.0 being equivalent to the DDPM sampler.
@@ -54,7 +53,7 @@ def get_config():
     sample.batch_size = 1
     # number of batches to sample per epoch. the total number of samples per epoch is `num_batches_per_epoch *
     # batch_size * num_gpus`.
-    sample.num_batches_per_epoch = 2
+    sample.num_batches_per_epoch = 1 # 2
 
     ###### Training ######
     config.train = train = ml_collections.ConfigDict()

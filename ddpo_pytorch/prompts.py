@@ -3,6 +3,7 @@ import os
 import functools
 import random
 import inflect
+from datasets import load_dataset
 
 IE = inflect.engine()
 ASSETS_PATH = resources.files("ddpo_pytorch.assets")
@@ -49,6 +50,25 @@ def nouns_activities(nouns_file, activities_file):
     activities = _load_lines(activities_file)
     return f"{IE.a(random.choice(nouns))} {random.choice(activities)}", {}
 
+def pickapic():
+    if os.path.exists('ddpo_pytorch/assets/pickapic_train.txt'):
+        pass
+    else:
+        dataset_name = 'yuvalkirstain/pickapic_v2'
+        dataset_config_name = None
+        cache_dir = '/tmp2/lupoy/study-HF/data/pickapics/pickapic_v2/'
+        train_data_dir = None
+        dataset = load_dataset(
+            dataset_name,
+            dataset_config_name,
+            cache_dir=cache_dir,
+            data_dir=train_data_dir,
+        )
+        prompts = dataset['train']['caption']
+        with open('pickapic_train.txt', 'w') as f:
+            for prompt in prompts:
+                f.write(prompt + '\n')
+    return from_file("pickapic_train.txt")
 
 def counting(nouns_file, low, high):
     nouns = _load_lines(nouns_file)
@@ -67,3 +87,8 @@ def counting(nouns_file, low, high):
         ],
     }
     return prompt, metadata
+
+if __name__ == "__main__":
+    for _ in range(10):
+        prompt, metadata = counting("simple_animals.txt", 1, 9)
+        print(prompt, metadata)

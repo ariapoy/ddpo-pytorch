@@ -45,6 +45,51 @@ def aesthetic_score():
 
     return _fn
 
+def pickscore():
+    from ddpo_pytorch.pickscore_scorer import PickScore
+
+    scorer = PickScore(dtype=torch.float32).cuda()
+
+    def _fn(images, prompts, metadata):
+        scores = scorer(images, prompts)
+        return scores, {}
+
+    return _fn
+
+def clip_score():
+    from ddpo_pytorch.aesthetic_scorer import CLIPScore
+
+    scorer = CLIPScore(dtype=torch.float32).cuda()
+
+    def _fn(images, prompts, metadata):
+        batch_size = 4
+        if isinstance(images, torch.Tensor):
+            images = (images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
+            images = images.transpose(0, 2, 3, 1)  # NCHW -> NHWC
+
+        images_batched = np.array_split(images, np.ceil(len(images) / batch_size))
+        metadata_batched = np.array_split(metadata, np.ceil(len(metadata) / batch_size))
+
+        all_scores = []
+        all_info = {
+            "answers": [],
+        }
+        for image_batch, metadata_batch in zip(images_batched, metadata_batched):
+            response_data = scorer(images=image_batch, prompts=prompts)
+
+            correct = np.array(
+                [
+                    [ans in resp for ans, resp in zip(m["answers"], responses)]
+                    for m, responses in zip(metadata_batch, response_data["outputs"])
+                ]
+            )
+            scores = correct.mean(axis=-1)
+
+            all_scores += scores.tolist()
+            all_info["answers"] += response_data["outputs"]
+
+        return np.array(all_scores), {k: np.array(v) for k, v in all_info.items()}
+    return _fn
 
 def llava_strict_satisfaction():
     """Submits images to LLaVA and computes a reward by matching the responses to ground truth answers directly without

@@ -70,6 +70,43 @@ def aesthetic_test():
     config.train.timestep_fraction = 0.1
     return config
 
+def prompt_image_counting():
+    config = compressibility()
+    config.num_epochs = 200
+    config.sample.batch_size = 8
+    config.sample.num_batches_per_epoch = 4 # 6
+    config.prompt_fn = "counting"
+    config.train.batch_size = 1 # 4
+    config.train.gradient_accumulation_steps = 8 # 6
+
+    config.prompt_fn_kwargs = {
+        "nouns_file": "simple_animals.txt",
+        "low": 1,
+        "high": 9,
+    }
+    config.reward_fn = ""
+    config.per_prompt_stat_tracking = {
+        "buffer_size": 32,
+        "min_count": 16,
+    }
+    return config
+
+def prompt_pickscore():
+    config = compressibility()
+    config.num_epochs = 200
+    config.sample.batch_size = 8
+    config.sample.num_batches_per_epoch = 4 # 6
+    config.prompt_fn = "pickapic"
+    config.train.batch_size = 1 # 4
+    config.train.gradient_accumulation_steps = 8 # 6
+
+    config.reward_fn = "pickscore"
+    config.per_prompt_stat_tracking = {
+        "buffer_size": 32,
+        "min_count": 16,
+    }
+    return config
+
 def prompt_image_alignment():
     config = compressibility()
 
@@ -77,11 +114,11 @@ def prompt_image_alignment():
     # for this experiment, I reserved 2 GPUs for LLaVA inference so only 6 could be used for DDPO. the total number of
     # samples per epoch is 8 * 6 * 6 = 288.
     config.sample.batch_size = 8
-    config.sample.num_batches_per_epoch = 6
+    config.sample.num_batches_per_epoch = 4 # 6
 
     # again, this one is harder to optimize, so I used (8 * 6) / (4 * 6) = 2 gradient updates per epoch.
-    config.train.batch_size = 4
-    config.train.gradient_accumulation_steps = 6
+    config.train.batch_size = 1 # 4
+    config.train.gradient_accumulation_steps = 8 # 6
 
     # prompting
     config.prompt_fn = "nouns_activities"
